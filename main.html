@@ -188,34 +188,34 @@
         const imageCache = {};
 
         // Fetch and cache image list from JSON
-        function fetchImageList() {
-            fetch('https://raw.githubusercontent.com/CallMe50/EmblemAssets/main/images2.json')
-                .then(response => response.json())
-                .then(data => {
-                    if (!Array.isArray(data)) {
-                        throw new Error("Image list is not an array");
-                    }
-                    initializeImageSelector(data);
-                    preloadImages(data);
-                })
-                .catch(error => {
-                    console.error('Error fetching image list:', error);
-                });
-        }
-
-        function preloadImages(imagesConfig) {
-            imagesConfig.forEach(image => {
-                const img = new Image();
-                img.src = image.path;
-                img.onload = () => {
-                    imageCache[image.name] = img;
-                    if (image.name === imagesConfig[0].name) {
-                        document.getElementById('previewImage').src = img.src;
-                        document.getElementById('previewName').textContent = image.name;
-                    }
-                };
+    function fetchImageList() {
+        fetch('https://raw.githubusercontent.com/CallMe50/EmblemAssets/main/images2.json')
+            .then(response => response.json())
+            .then(data => {
+                if (!Array.isArray(data)) {
+                    throw new Error("Image list is not an array");
+                }
+                initializeImageSelector(data);
+                preloadImages(data);
+            })
+            .catch(error => {
+                console.error('Error fetching image list:', error);
             });
-        }
+    }
+
+    function preloadImages(imagesConfig) {
+        imagesConfig.forEach(image => {
+            const img = new Image();
+            img.src = image.path;
+            img.onload = () => {
+                imageCache[image.name] = img;
+                if (imagesConfig[0].name === image.name) {
+                    document.getElementById('previewImage').src = img.src;
+                    document.getElementById('previewName').textContent = image.name;
+                }
+            };
+        });
+    }
 
         function initializeImageSelector(imagesConfig) {
             const imageSelect = document.getElementById('imageSelect');
@@ -227,14 +227,20 @@
             });
         }
 
-        function updateImage() {
-            const imagesConfig = Object.values(imageCache);
-            currentImageIndex = document.getElementById('imageSelect').value;
+    function updateImage() {
+        const imagesConfig = Object.values(imageCache);
+        currentImageIndex = document.getElementById('imageSelect').value;
+
+        // Ensure currentImageIndex is within bounds
+        if (currentImageIndex >= 0 && currentImageIndex < imagesConfig.length) {
             const selectedImage = imagesConfig[currentImageIndex];
             const previewImage = document.getElementById('previewImage');
             previewImage.src = selectedImage.src;
             document.getElementById('previewName').textContent = Object.keys(imageCache)[currentImageIndex];
+        } else {
+            console.error('Invalid image index:', currentImageIndex);
         }
+    }
 
         function updateOpacity() {
             currentOpacity = parseFloat(document.getElementById('opacity').value);

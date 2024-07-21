@@ -305,14 +305,44 @@
             }
         }
 
-        function exportEmblem() {
-            const json = JSON.stringify(shapes.map(shape => ({
-                ...shape,
-                image: shape.image.src
-            })), null, 2);
-            document.getElementById('output').value = json;
-        }
+function exportEmblem() {
+    const json = {};
+    shapes.forEach((shape, index) => {
+        const imageName = Object.keys(imageCache).find(name => imageCache[name] === shape.image);
+        json[index] = {
+            type: "image",
+            name: imageName,
+            x: shape.x,
+            y: shape.y,
+            opacity: shape.opacity,
+            color_r: hexToRgb(currentColor).r,
+            color_g: hexToRgb(currentColor).g,
+            color_b: hexToRgb(currentColor).b,
+            scaleX: shape.scaleX,
+            scaleY: shape.scaleY,
+            rotation: shape.rotation
+        };
+    });
+    document.getElementById('output').textContent = JSON.stringify(json, null, 2);
+}
 
+// Utility function to convert hex color to RGB
+function hexToRgb(hex) {
+    let r = 0, g = 0, b = 0;
+    // 3 digits
+    if (hex.length === 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    }
+    // 6 digits
+    else if (hex.length === 7) {
+        r = parseInt(hex[1] + hex[2], 16);
+        g = parseInt(hex[3] + hex[4], 16);
+        b = parseInt(hex[5] + hex[6], 16);
+    }
+    return { r, g, b };
+}
         function loadFromJSONPrompt() {
             document.getElementById('fileInput').click();
         }

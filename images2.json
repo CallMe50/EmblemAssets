@@ -128,6 +128,10 @@
         "path": "http://107.174.93.220:5001/file/Chicom%20CQB%20Qualified.png"
     },
     {
+        "name": "Circle 01",
+        "path": "http://107.174.93.220:5001/file/Circle%2001.png"
+    },
+    {
         "name": "Circle 02",
         "path": "http://107.174.93.220:5001/file/Circle%2002.png"
     },

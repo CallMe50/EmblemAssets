@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emblem Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            color: #f5a623;
+            text-align: center;
+            margin: 20px 0;
+        }
+        #editor {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: calc(100vh - 40px);
+            padding: 20px;
+        }
+        #emblemCanvas {
+            border: 1px solid #333;
+            background-color: #2e2e2e;
+        }
+        #controls {
+            margin-left: 20px;
+            background-color: #333;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            max-width: 300px;
+        }
+        #output {
+            width: 100%;
+            height: 200px;
+            background-color: #2e2e2e;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            border-radius: 5px;
+            margin-top: 20px;
+            padding: 10px;
+        }
+        #layerList {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #555;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #2e2e2e;
+            border-radius: 5px;
+        }
+        .layer-item {
+            cursor: pointer;
+            padding: 5px;
+            margin: 5px 0;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .layer-item:hover {
+            background-color: #444;
+        }
+        .layer-item.selected {
+            background-color: #555;
+        }
+        .controls-row {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #f5f5f5;
+        }
+        input[type="range"], input[type="number"], input[type="color"] {
+            width: 100%;
+            border: 1px solid #555;
+            border-radius: 5px;
+            background-color: #2e2e2e;
+            color: #e0e0e0;
+        }
+        input[type="file"] {
+            background-color: #444;
+            color: #e0e0e0;
+        }
+        button {
+            background-color: #f5a623;
+            color: #1e1e1e;
+            border: none;
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-right: 5px;
+        }
+        button:hover {
+            background-color: #e5941f;
+        }
+        #imageSelectContainer {
+            margin-bottom: 10px;
+        }
+        .preview-container {
+            display: flex;
+            align-items: center;
+            margin-top: 5px;
+        }
+        .preview-container img {
+            width: 50px;
+            height: 50px;
+            margin-right: 10px;
+            border-radius: 5px;
+            border: 1px solid #555;
+        }
+        .preview-container span {
+            color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Emblem Editor</h1>
+    <div id="editor">
+        <canvas id="emblemCanvas" width="500" height="500"></canvas>
+        <div id="controls">
+            <div class="controls-row">
+                <label for="imageSelect">Select Image:</label>
+                <div id="imageSelectContainer">
+                    <select id="imageSelect" onchange="updateImage()">
+                        <!-- Options will be dynamically added here -->
+                    </select>
+                    <div id="imagePreview" class="preview-container">
+                        <img id="previewImage" src="" alt="Preview">
+                        <span id="previewName"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="controls-row">
+                <label for="opacity">Opacity:</label>
+                <input type="range" id="opacity" name="opacity" min="0" max="1" step="0.1" value="1" onchange="updateOpacity()">
+            </div>
+            <div class="controls-row">
+                <label for="scaleX">Scale X:</label>
+                <input type="number" id="scaleX" name="scaleX" min="0.1" step="0.1" value="1" onchange="updateScale()">
+            </div>
+            <div class="controls-row">
+                <label for="scaleY">Scale Y:</label>
+                <input type="number" id="scaleY" name="scaleY" min="0.1" step="0.1" value="1" onchange="updateScale()">
+            </div>
+            <div class="controls-row">
+                <label for="rotation">Rotation:</label>
+                <input type="range" id="rotation" name="rotation" min="0" max="360" step="1" value="0" onchange="updateRotation()">
+            </div>
+            <div class="controls-row">
+                <label for="color">Color:</label>
+                <input type="color" id="color" value="#ffffff" onchange="updateColor()">
+            </div>
+            <div class="controls-row">
+                <button onclick="addImage()">Add Image</button>
+                <button onclick="removeLayer()">Remove Layer</button>
+                <button onclick="exportEmblem()">Export JSON</button>
+                <button onclick="loadFromJSONPrompt()">Load JSON</button>
+                <input type="file" id="fileInput" accept=".json" style="display:none;" onchange="loadFromJSON(event)">
+            </div>
+            <div id="layerList"></div>
+        </div>
+    </div>
+    <textarea id="output" readonly></textarea>
+
+    <script>
+        const canvas = document.getElementById('emblemCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let shapes = [];
+        let currentOpacity = 1;
+        let currentScaleX = 1;
+        let currentScaleY = 1;
+        let currentRotation = 0; // Added for rotation
+        let selectedShapeIndex = null;
+        let dragging = false;
+        let offsetX, offsetY;
+        let currentImageIndex = 0;
+        let currentColor = '#ffffff';
+
+        // Images configuration
+        const imagesConfig = [
+             { "name": "AN-94 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/AN-94%20Qualified.png?raw=true" },
+    { "name": "Action Hero", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Action%20Hero.png?raw=true" },
+    { "name": "Aircraft Hunter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Aircraft%20Hunter.png?raw=true" },
+    { "name": "All Clear", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/All%20Clear.png?raw=true" },
+    { "name": "Alpha Lockdown", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Alpha%20Lockdown.png?raw=true" },
+    { "name": "Annihilation Victory", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Annihilation%20Victory.png?raw=true" },
+    { "name": "Anti-Swatter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Anti-Swatter.png?raw=true" },
+    { "name": "Arch Nemesis", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Arch%20Nemesis.png?raw=true" },
+    { "name": "Armchair", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Armchair.png?raw=true" },
+    { "name": "Assault Shield Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Assault%20Shield%20Qualified.png?raw=true" },
+    { "name": "Assisted Homicide", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Assisted%20Homicide.png?raw=true" },
+    { "name": "Asterisk Full", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Asterisk%20Full.png?raw=true" },
+    { "name": "Avenger", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Avenger.png?raw=true" },
+    { "name": "Axe", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Axe.png?raw=true" },
+    { "name": "B23R Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/B23R%20Qualified.png?raw=true" },
+    { "name": "Backdraft", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Backdraft.png?raw=true" },
+    { "name": "Ballista Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Ballista%20Qualified.png?raw=true" },
+    { "name": "Ballistic Knife Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Ballistic%20Knife%20Qualified.png?raw=true" },
+    { "name": "Big Game Hunter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Big%20Game%20Hunter.png?raw=true" },
+    { "name": "Bike Ramp", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Bike%20Ramp.png?raw=true" },
+    { "name": "Biohazard", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Biohazard.png?raw=true" },
+    { "name": "Bomb Protector", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Bomb%20Protector%20.png?raw=true" },
+    { "name": "Bone", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Bone.png?raw=true" },
+    { "name": "Bravo Hot", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Bravo%20Hot.png?raw=true" },
+    { "name": "Bravo Lockdown", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Bravo%20Lockdown.png?raw=true" },
+    { "name": "Brigadier General", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Brigadier%20General.png?raw=true" },
+    { "name": "Broken Column", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Broken%20Column.png?raw=true" },
+    { "name": "Brutal Killer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Brutal%20Killer.png?raw=true" },
+    { "name": "Cancelled Out", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Cancelled%20Out.png?raw=true" },
+    { "name": "Captain", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Captain.png?raw=true" },
+    { "name": "Charlie Lockdown", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Charlie%20Lockdown.png?raw=true" },
+    { "name": "Chicom CQB Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Chicom%20CQB%20Qualified.png?raw=true" },
+    { "name": "Circle 02", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Circle%2002.png?raw=true" },
+    { "name": "Circus Act", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Circus%20Act.png?raw=true" },
+    { "name": "Clean House", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Clean%20House.png?raw=true" },
+    { "name": "Clean Sweep", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Clean%20Sweep.png?raw=true" },
+    { "name": "Close Call", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Close%20Call.png?raw=true" },
+    { "name": "Close Quarters Expert", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Close%20Quarters%20Expert.png?raw=true" },
+    { "name": "Colonel", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Colonel.png?raw=true" },
+    { "name": "Commander", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Commander.png?raw=true" },
+    { "name": "Commando", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Commando.png?raw=true" },
+    { "name": "Cone", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Cone.png?raw=true" },
+    { "name": "Corporal", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Corporal.png?raw=true" },
+    { "name": "Counter Hacker", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Counter%20Hacker.png?raw=true" },
+    { "name": "Counter Trapper", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Counter%20Trapper.png?raw=true" },
+    { "name": "Crossbow Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Crossbow%20Qualified.png?raw=true" },
+    { "name": "Crushing Victory", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Crushing%20Victory%20.png?raw=true" },
+    { "name": "Curved Line", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Curved%20Line.png?raw=true" },
+    { "name": "DSR 50 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/DSR%2050%20Qualified.png?raw=true" },
+    { "name": "Danger Close", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Danger%20Close.png?raw=true" },
+    { "name": "Default Emblem", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Default%20Emblem.png?raw=true" },
+    { "name": "Diamond", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Diamond.png?raw=true" },
+    { "name": "Dog Pound", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Dog%20Pound.png?raw=true" },
+    { "name": "Double Denied", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Double%20Denied.png?raw=true" },
+    { "name": "Down Dog", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Down%20Dog.png?raw=true" },
+    { "name": "Drones Eliminated", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Drones%20Eliminated.png?raw=true" },
+    { "name": "Eight", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Eight.png?raw=true" },
+    { "name": "Elite Founder", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Elite%20Founder.png?raw=true" },
+    { "name": "Elite Member", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Elite%20Member.png?raw=true" },
+    { "name": "Executioner Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Executioner%20Qualified.png?raw=true" },
+    { "name": "FAL OSW Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/FAL%20OSW%20Qualified.png?raw=true" },
+    { "name": "FHJ-18 AA Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/FHJ-18%20AA%20Qualified.png?raw=true" },
+    { "name": "Far Sighted", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Far%20Sighted.png?raw=true" },
+    { "name": "Fedora", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Fedora.png?raw=true" },
+    { "name": "Five-seven Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Five-seven%20Qualified.png?raw=true" },
+    { "name": "Five", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Five.png?raw=true" },
+    { "name": "Flag Breeze", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Flag%20Breeze.png?raw=true" },
+    { "name": "Flag No Wind", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Flag%20No%20Wind.png?raw=true" },
+    { "name": "Flashlight", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Flashlight.png?raw=true" },
+    { "name": "Focus Fire", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Focus%20Fire.png?raw=true" },
+    { "name": "Follow Through", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Follow%20Through.png?raw=true" },
+    { "name": "Found Kills", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Found%20Kills.png?raw=true" },
+    { "name": "Four", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Four.png?raw=true" },
+    { "name": "Frenzy Killer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Frenzy%20Killer.png?raw=true" },
+    { "name": "Full Circle", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Full%20Circle.png?raw=true" },
+    { "name": "Fury Killer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Fury%20Killer.png?raw=true" },
+    { "name": "General", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/General.png?raw=true" },
+    { "name": "Golf Flag", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Golf%20Flag.png?raw=true" },
+    { "name": "Got Your Back", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Got%20Your%20Back.png?raw=true" },
+    { "name": "Grab n Go", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Grab%20n%20Go.png?raw=true" },
+    { "name": "Guerilla Warfare", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Guerilla%20Warfare.png?raw=true" },
+    { "name": "Guide Dogs", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Guide%20Dogs.png?raw=true" },
+    { "name": "Gunfighter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Gunfighter.png?raw=true" },
+    { "name": "Gunnery Sergeant", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Gunnery%20Sergeant.png?raw=true" },
+    { "name": "HAMR Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/HAMR%20Qualified.png?raw=true" },
+    { "name": "Hail Mary", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Hail%20Mary.png?raw=true" },
+    { "name": "Half Circle", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Circle.png?raw=true" },
+    { "name": "Half Column", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Column.png?raw=true" },
+    { "name": "Half Heart", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Heart.png?raw=true" },
+    { "name": "Half Long Hair", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Long%20Hair.png?raw=true" },
+    { "name": "Half Mustache", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Mustache.png?raw=true" },
+    { "name": "Half Short Hair", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Short%20Hair.png?raw=true" },
+    { "name": "Half Shuriken", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Shuriken.png?raw=true" },
+    { "name": "Half Star", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Star.png?raw=true" },
+    { "name": "Half Tube", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Half%20Tube.png?raw=true" },
+    { "name": "Hard Counter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Hard%20Counter.png?raw=true" },
+    { "name": "Hard to Kill", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Hard%20to%20Kill.png?raw=true" },
+    { "name": "Headhunter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Headhunter.png?raw=true" },
+    { "name": "Heart", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Heart.png?raw=true" },
+    { "name": "Heavy Cover", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Heavy%20Cover.png?raw=true" },
+    { "name": "High Voltage", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/High%20Voltage.png?raw=true" },
+    { "name": "Ice Star", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Ice%20Star.png?raw=true" },
+    { "name": "Igloo", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Igloo.png?raw=true" },
+    { "name": "Interruption", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Interruption%20.png?raw=true" },
+    { "name": "Invincible", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Invincible.png?raw=true" },
+    { "name": "KAP-40 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/KAP-40%20Qualified.png?raw=true" },
+    { "name": "KSG Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/KSG%20Qualified.png?raw=true" },
+    { "name": "Killjoy", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Killjoy.png?raw=true" },
+    { "name": "Kiss", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Kiss.png?raw=true" },
+    { "name": "LSAT Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/LSAT%20Qualified.png?raw=true" },
+    { "name": "Lamp Shade", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Lamp%20Shade.png?raw=true" },
+    { "name": "Lance Corporal", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Lance%20Corporal.png?raw=true" },
+    { "name": "Last Man Standing", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Last%20Man%20Standing.png?raw=true" },
+    { "name": "Letter A", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20A.png?raw=true" },
+    { "name": "Letter B", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20B.png?raw=true" },
+    { "name": "Letter C", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20C.png?raw=true" },
+    { "name": "Letter D", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20D.png?raw=true" },
+    { "name": "Letter E", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20E.png?raw=true" },
+    { "name": "Letter F", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20F.png?raw=true" },
+    { "name": "Letter G", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20G.png?raw=true" },
+    { "name": "Letter H", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20H.png?raw=true" },
+    { "name": "Letter I", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20I.png?raw=true" },
+    { "name": "Letter J", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20J.png?raw=true" },
+    { "name": "Letter K", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20K.png?raw=true" },
+    { "name": "Letter L", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20L.png?raw=true" },
+    { "name": "Letter M", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20M.png?raw=true" },
+    { "name": "Letter N", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20N.png?raw=true" },
+    { "name": "Letter O", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20O.png?raw=true" },
+    { "name": "Letter P", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20P.png?raw=true" },
+    { "name": "Letter Q", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20Q.png?raw=true" },
+    { "name": "Letter R", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20R.png?raw=true" },
+    { "name": "Letter S", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20S.png?raw=true" },
+    { "name": "Letter T", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20T.png?raw=true" },
+    { "name": "Letter U", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20U.png?raw=true" },
+    { "name": "Letter V", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20V.png?raw=true" },
+    { "name": "Letter W", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20W.png?raw=true" },
+    { "name": "Letter X", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20X.png?raw=true" },
+    { "name": "Letter Y", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20Y.png?raw=true" },
+    { "name": "Letter Z", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Letter%20Z.png?raw=true" },
+    { "name": "Lieutenant", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Lieutenant.png?raw=true" },
+    { "name": "Lt. Colonel", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Lt.%20Colonel.png?raw=true" },
+    { "name": "Lt. General", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Lt.%20General.png?raw=true" },
+    { "name": "M1216 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/M1216%20Qualified.png?raw=true" },
+    { "name": "M27 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/M27%20Qualified.png?raw=true" },
+    { "name": "M8A1 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/M8A1%20Qualified.png?raw=true" },
+    { "name": "MP7 Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/MP7%20Qualified.png?raw=true" },
+    { "name": "MSMC Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/MSMC%20Qualified.png?raw=true" },
+    { "name": "MTAR Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/MTAR%20Qualified.png?raw=true" },
+    { "name": "Major General", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Major%20General.png?raw=true" },
+    { "name": "Major", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Major.png?raw=true" },
+    { "name": "Make It Rain", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Make%20It%20Rain.png?raw=true" },
+    { "name": "Mane", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Mane.png?raw=true" },
+    { "name": "Master Gunnery Sergeant", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Master%20Gunnery%20Sergeant.png?raw=true" },
+    { "name": "Master Sergeant", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Master%20Sergeant.png?raw=true" },
+    { "name": "Melted Ice", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Melted%20Ice.png?raw=true" },
+    { "name": "Mercenary", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Mercenary.png?raw=true" },
+    { "name": "Military", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Military.png?raw=true" },
+    { "name": "Moon", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Moon.png?raw=true" },
+    { "name": "Mortar", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Mortar.png?raw=true" },
+    { "name": "Multi-Killer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Multi-Killer.png?raw=true" },
+    { "name": "Nuclear", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Nuclear.png?raw=true" },
+    { "name": "One Hit Wonder", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/One%20Hit%20Wonder.png?raw=true" },
+    { "name": "One", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/One.png?raw=true" },
+    { "name": "Operation Hydra", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Operation%20Hydra.png?raw=true" },
+    { "name": "Pack", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Pack.png?raw=true" },
+    { "name": "Painted", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Painted.png?raw=true" },
+    { "name": "Platoon", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Platoon.png?raw=true" },
+    { "name": "Platinum", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Platinum.png?raw=true" },
+    { "name": "RANGER Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/RANGER%20Qualified.png?raw=true" },
+    { "name": "Raven", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Raven.png?raw=true" },
+    { "name": "Red Flag", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Red%20Flag.png?raw=true" },
+    { "name": "Revolver Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Revolver%20Qualified.png?raw=true" },
+    { "name": "Riot Shield Qualified", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Riot%20Shield%20Qualified.png?raw=true" },
+    { "name": "Rivalry", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Rivalry.png?raw=true" },
+    { "name": "Riot Shield", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Riot%20Shield.png?raw=true" },
+    { "name": "Rogue", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Rogue.png?raw=true" },
+    { "name": "Rumble", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Rumble.png?raw=true" },
+    { "name": "Rusher", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Rusher.png?raw=true" },
+    { "name": "Sentry Gun", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Sentry%20Gun.png?raw=true" },
+    { "name": "Shadow", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Shadow.png?raw=true" },
+    { "name": "Shuriken", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Shuriken.png?raw=true" },
+    { "name": "Skull Crusher", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Skull%20Crusher.png?raw=true" },
+    { "name": "Skull", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Skull.png?raw=true" },
+    { "name": "Skull Face", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Skull%20Face.png?raw=true" },
+    { "name": "Skull Mask", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Skull%20Mask.png?raw=true" },
+    { "name": "Skull Splitter", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Skull%20Splitter.png?raw=true" },
+    { "name": "Star", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Star.png?raw=true" },
+    { "name": "Star Burst", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Star%20Burst.png?raw=true" },
+    { "name": "Stealth", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Stealth.png?raw=true" },
+    { "name": "Strike", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Strike.png?raw=true" },
+    { "name": "Tactical Mask", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Tactical%20Mask.png?raw=true" },
+    { "name": "Tactical Master", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Tactical%20Master.png?raw=true" },
+    { "name": "Tank", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Tank.png?raw=true" },
+    { "name": "Tank Shell", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Tank%20Shell.png?raw=true" },
+    { "name": "The Enforcer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/The%20Enforcer.png?raw=true" },
+    { "name": "The Forgotten", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/The%20Forgotten.png?raw=true" },
+    { "name": "Three", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Three.png?raw=true" },
+    { "name": "Time Travel", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Time%20Travel.png?raw=true" },
+    { "name": "Top Gun", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Top%20Gun.png?raw=true" },
+    { "name": "Top Ten", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Top%20Ten.png?raw=true" },
+    { "name": "Unstoppable", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Unstoppable.png?raw=true" },
+    { "name": "VIP", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/VIP.png?raw=true" },
+    { "name": "Weapon Master", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Weapon%20Master.png?raw=true" },
+    { "name": "Zombie Killer", "path": "https://github.com/CallMe50/EmblemAssets/blob/main/icons/Zombie%20Killer.png?raw=true" }
+        ];
+
+        const imageCache = {};
+
+        // Preload and cache images
+        function preloadImages() {
+            imagesConfig.forEach(image => {
+                const img = new Image();
+                img.src = image.path;
+                img.onload = () => {
+                    imageCache[image.name] = img;
+                    // Set preview for the first image initially
+                    if (image.name === imagesConfig[0].name) {
+                        document.getElementById('previewImage').src = img.src;
+                        document.getElementById('previewName').textContent = image.name;
+                    }
+                };
+            });
+        }
+
+        // Initialize image selector with previews
+        function initializeImageSelector() {
+            const imageSelect = document.getElementById('imageSelect');
+            imagesConfig.forEach((image, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = image.name;
+                imageSelect.appendChild(option);
+            });
+        }
+
+        function updateImage() {
+            currentImageIndex = document.getElementById('imageSelect').value;
+            const selectedImage = imagesConfig[currentImageIndex];
+            const previewImage = document.getElementById('previewImage');
+            
+            // Load image dynamically if not cached
+            if (!imageCache[selectedImage.name]) {
+                const img = new Image();
+                img.src = selectedImage.path;
+                img.onload = () => {
+                    imageCache[selectedImage.name] = img;
+                    previewImage.src = img.src;
+                    document.getElementById('previewName').textContent = selectedImage.name;
+                };
+            } else {
+                previewImage.src = imageCache[selectedImage.name].src;
+                document.getElementById('previewName').textContent = selectedImage.name;
+            }
+        }
+
+        function updateOpacity() {
+            currentOpacity = parseFloat(document.getElementById('opacity').value);
+            if (selectedShapeIndex !== null) {
+                shapes[selectedShapeIndex].opacity = currentOpacity;
+                drawShapes();
+            }
+        }
+
+        function updateScale() {
+            currentScaleX = parseFloat(document.getElementById('scaleX').value);
+            currentScaleY = parseFloat(document.getElementById('scaleY').value);
+            if (selectedShapeIndex !== null) {
+                shapes[selectedShapeIndex].scaleX = currentScaleX;
+                shapes[selectedShapeIndex].scaleY = currentScaleY;
+                drawShapes();
+            }
+        }
+
+        function updateRotation() {
+            currentRotation = parseFloat(document.getElementById('rotation').value);
+            if (selectedShapeIndex !== null) {
+                shapes[selectedShapeIndex].rotation = currentRotation;
+                drawShapes();
+            }
+        }
+
+        function updateColor() {
+            currentColor = document.getElementById('color').value;
+            if (selectedShapeIndex !== null) {
+                shapes[selectedShapeIndex].color = currentColor;
+                drawShapes();
+            }
+        }
+
+        function addImage() {
+            const selectedImage = imagesConfig[currentImageIndex];
+            shapes.push({
+                type: 'image',
+                name: selectedImage.name,
+                imagePath: selectedImage.path,
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                width: 100,
+                height: 100,
+                originalWidth: 100,
+                originalHeight: 100,
+                opacity: currentOpacity,
+                color: currentColor,
+                scaleX: currentScaleX,
+                scaleY: currentScaleY,
+                rotation: currentRotation
+            });
+            drawShapes();
+            updateLayerList();
+        }
+
+        function removeLayer() {
+            if (selectedShapeIndex !== null) {
+                shapes.splice(selectedShapeIndex, 1);
+                selectedShapeIndex = null;
+                drawShapes();
+                updateLayerList();
+            }
+        }
+
+function hexToRgb(hex) {
+    // Convert hex to RGB
+    let r = 0, g = 0, b = 0;
+    // 3 digits
+    if (hex.length === 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    }
+    // 6 digits
+    else if (hex.length === 7) {
+        r = parseInt(hex[1] + hex[2], 16);
+        g = parseInt(hex[3] + hex[4], 16);
+        b = parseInt(hex[5] + hex[6], 16);
+    }
+    return { r: r / 255, g: g / 255, b: b / 255 }; // Normalize to [0, 1] range
+}
+
+function exportEmblem() {
+    // Create an object with layer indices as keys
+    const layersWithIndex = shapes.reduce((acc, shape, index) => {
+        // Convert color to RGB
+        const rgbColor = hexToRgb(shape.color || "#ffffff"); // Default to white if no color
+        
+        acc[index] = {
+            type: shape.type,
+            name: shape.name,
+            x: shape.x,
+            y: shape.y,
+            opacity: shape.opacity,
+            color_r: rgbColor.r,
+            color_g: rgbColor.g,
+            color_b: rgbColor.b,
+            scaleX: shape.scaleX,
+            scaleY: shape.scaleY,
+            rotation: shape.rotation
+        };
+        return acc;
+    }, {});
+
+    const json = JSON.stringify(layersWithIndex, null, 2);
+    document.getElementById('output').value = json;
+}
+
+
+        function getMousePos(canvas, event) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        function drawShapes() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            shapes.forEach((shape, index) => {
+                const img = imageCache[shape.name];
+                if (img) {
+                    ctx.save();
+                    ctx.globalAlpha = shape.opacity;
+                    ctx.translate(shape.x, shape.y);
+                    ctx.rotate(shape.rotation * Math.PI / 180);
+                    ctx.drawImage(
+                        img,
+                        -shape.width / 2,
+                        -shape.height / 2,
+                        shape.width * shape.scaleX,
+                        shape.height * shape.scaleY
+                    );
+                    if (shape.color) {
+                        ctx.globalCompositeOperation = 'source-atop';
+                        ctx.fillStyle = shape.color;
+                        ctx.fillRect(-shape.width / 2, -shape.height / 2, shape.width * shape.scaleX, shape.height * shape.scaleY);
+                        ctx.globalCompositeOperation = 'source-over';
+                    }
+                    ctx.restore();
+                }
+            });
+        }
+
+        function updateLayerList() {
+            const layerList = document.getElementById('layerList');
+            layerList.innerHTML = '';
+            shapes.forEach((shape, index) => {
+                const div = document.createElement('div');
+                div.className = 'layer-item';
+                div.textContent = shape.name;
+                div.onclick = () => {
+                    selectedShapeIndex = index;
+                    drawShapes();
+                    updateLayerControls();
+                };
+                if (index === selectedShapeIndex) {
+                    div.classList.add('selected');
+                }
+                layerList.appendChild(div);
+            });
+        }
+
+        function updateLayerControls() {
+            if (selectedShapeIndex !== null) {
+                const shape = shapes[selectedShapeIndex];
+                document.getElementById('opacity').value = shape.opacity;
+                document.getElementById('scaleX').value = shape.scaleX;
+                document.getElementById('scaleY').value = shape.scaleY;
+                document.getElementById('rotation').value = shape.rotation;
+                document.getElementById('color').value = shape.color || '#ffffff';
+            }
+        }
+
+        canvas.addEventListener('mousedown', (event) => {
+            const pos = getMousePos(canvas, event);
+            selectedShapeIndex = null;
+            shapes.forEach((shape, index) => {
+                const dx = pos.x - shape.x;
+                const dy = pos.y - shape.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < (shape.width * shape.scaleX) / 2) {
+                    selectedShapeIndex = index;
+                    offsetX = dx;
+                    offsetY = dy;
+                }
+            });
+            if (selectedShapeIndex !== null) {
+                dragging = true;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            if (dragging && selectedShapeIndex !== null) {
+                const pos = getMousePos(canvas, event);
+                const shape = shapes[selectedShapeIndex];
+                shape.x = pos.x - offsetX;
+                shape.y = pos.y - offsetY;
+                drawShapes();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            dragging = false;
+        });
+
+        preloadImages();
+        initializeImageSelector();
+        updateLayerList();
+    </script>
+</body>
+</html>
